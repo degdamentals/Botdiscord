@@ -896,6 +896,25 @@ class Tickets(commands.Cog):
                 )
                 return
 
+            # Enforce cancellation policy (coaches bypass this)
+            if not is_coach(interaction.user):
+                scheduled = booking.scheduled_at
+                if scheduled.tzinfo is None:
+                    scheduled = config.TIMEZONE.localize(scheduled)
+                time_until = scheduled - datetime.now(config.TIMEZONE)
+                if time_until < timedelta(hours=config.CANCELLATION_NOTICE_HOURS):
+                    await interaction.followup.send(
+                        embed=create_error_embed(
+                            "❌ Annulation impossible.\n\n"
+                            f"La session est dans **{int(time_until.total_seconds() // 3600)}h "
+                            f"{int((time_until.total_seconds() % 3600) // 60)}min**.\n"
+                            f"Les annulations doivent être faites au moins **{config.CANCELLATION_NOTICE_HOURS}h à l'avance**.\n\n"
+                            "Contactez votre coach si nécessaire."
+                        ),
+                        ephemeral=True
+                    )
+                    return
+
             # Cancel booking
             booking.status = config.STATUS_CANCELLED
             session.commit()
@@ -974,6 +993,25 @@ class Tickets(commands.Cog):
                     ephemeral=True
                 )
                 return
+
+            # Enforce reschedule policy (coaches bypass this)
+            if not is_coach(interaction.user):
+                scheduled = booking.scheduled_at
+                if scheduled.tzinfo is None:
+                    scheduled = config.TIMEZONE.localize(scheduled)
+                time_until = scheduled - datetime.now(config.TIMEZONE)
+                if time_until < timedelta(hours=config.CANCELLATION_NOTICE_HOURS):
+                    await interaction.followup.send(
+                        embed=create_error_embed(
+                            "❌ Report impossible.\n\n"
+                            f"La session est dans **{int(time_until.total_seconds() // 3600)}h "
+                            f"{int((time_until.total_seconds() % 3600) // 60)}min**.\n"
+                            f"Les reports doivent être faits au moins **{config.CANCELLATION_NOTICE_HOURS}h à l'avance**.\n\n"
+                            "Contactez votre coach si nécessaire."
+                        ),
+                        ephemeral=True
+                    )
+                    return
 
             # Store booking info for rescheduling
             old_date = booking.scheduled_at

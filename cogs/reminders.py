@@ -18,6 +18,7 @@ class Reminders(commands.Cog):
         self.bot = bot
         self.check_reminders.start()
         self.daily_coach_summary.start()
+        self.check_pack_expiry.start()
 
     def cog_unload(self):
         """
@@ -25,6 +26,7 @@ class Reminders(commands.Cog):
         """
         self.check_reminders.cancel()
         self.daily_coach_summary.cancel()
+        self.check_pack_expiry.cancel()
 
     async def cog_load(self):
         """
@@ -226,6 +228,48 @@ class Reminders(commands.Cog):
                             await member.send(embed=embed)
                         except discord.Forbidden:
                             print(f"❌ Cannot send DM to coach {member.name}")
+
+
+    @tasks.loop(hours=12)  # Check twice a day
+    async def check_pack_expiry(self):
+        """
+        Check for expired pack sessions (pending_schedule older than PACK_EXPIRY_DAYS)
+        and cancel them automatically
+        """
+        now = datetime.now(config.TIMEZONE)
+        expiry_threshold = now - timedelta(days=config.PACK_EXPIRY_DAYS)
+
+        with get_session() as session:
+            expired_bookings = session.query(Booking).filter(
+                Booking.status == config.STATUS_PENDING_SCHEDULE,
+                Booking.created_at <= expiry_threshold
+            ).all()
+
+            for booking in expired_bookings:
+                booking.status = config.STATUS_CANCELLED
+                print(f"⚠️ Pack session {booking.id} expired after {config.PACK_EXPIRY_DAYS} days — cancelled")
+
+            if expired_bookings:
+                session.commit()
+                # Notify coaches if any packs expired
+                guild = self.bot.get_guild(config.GUILD_ID)
+                if guild and config.LOG_CHANNEL_ID:
+                    log_channel = guild.get_channel(config.LOG_CHANNEL_ID)
+                    if log_channel:
+                        embed = discord.Embed(
+                            title="⚠️ Sessions pack expirées",
+                            description=f"**{len(expired_bookings)}** session(s) pack ont expiré après {config.PACK_EXPIRY_DAYS} jours sans être planifiées et ont été annulées.",
+                            color=config.WARNING_COLOR
+                        )
+                        embed.timestamp = datetime.utcnow()
+                        try:
+                            await log_channel.send(embed=embed)
+                        except discord.Forbidden:
+                            pass
+
+    @check_pack_expiry.before_loop
+    async def before_check_pack_expiry(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot):

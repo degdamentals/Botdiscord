@@ -233,6 +233,74 @@ class Admin(commands.Cog):
                     embed=create_success_embed(f"Réservation #{booking_id} marquée comme no-show.")
                 )
 
+    @app_commands.command(name="my-sessions", description="Voir vos prochaines sessions de coaching")
+    async def my_sessions(self, interaction: discord.Interaction):
+        """
+        Allow students to see their upcoming sessions
+        """
+        await interaction.response.defer(ephemeral=True)
+
+        with get_session() as session:
+            client = session.query(Client).filter_by(discord_id=str(interaction.user.id)).first()
+
+            if not client:
+                await interaction.followup.send(
+                    embed=create_info_embed("Vous n'avez aucune réservation pour le moment.\n\nUtilisez le bouton de réservation pour créer une session."),
+                    ephemeral=True
+                )
+                return
+
+            now = datetime.now(config.TIMEZONE)
+            all_bookings = session.query(Booking).filter_by(client_id=client.id).all()
+
+            # Upcoming confirmed sessions
+            upcoming = []
+            for b in all_bookings:
+                scheduled = b.scheduled_at
+                if scheduled.tzinfo is None:
+                    scheduled = config.TIMEZONE.localize(scheduled)
+                if b.status == config.STATUS_CONFIRMED and scheduled > now:
+                    upcoming.append((b, scheduled))
+            upcoming.sort(key=lambda x: x[1])
+
+            # Pack sessions to schedule
+            pending = [b for b in all_bookings if b.status == "pending_schedule"]
+
+            # Recent completed
+            completed = [b for b in all_bookings if b.status == config.STATUS_COMPLETED]
+
+            embed = discord.Embed(
+                title="📅 Mes sessions de coaching",
+                description=f"Bonjour **{interaction.user.display_name}**!",
+                color=config.BOT_COLOR
+            )
+
+            if upcoming:
+                upcoming_text = ""
+                for booking, scheduled in upcoming[:5]:
+                    type_emoji = "🆓" if booking.booking_type == config.BOOKING_TYPE_FREE else "💰"
+                    upcoming_text += f"{type_emoji} **{scheduled.strftime('%d/%m/%Y à %H:%M')}** ({booking.duration_minutes}min) — ID: `{booking.id}`\n"
+                embed.add_field(name=f"⏳ Prochaines sessions ({len(upcoming)})", value=upcoming_text, inline=False)
+            else:
+                embed.add_field(name="⏳ Prochaines sessions", value="Aucune session prévue.", inline=False)
+
+            if pending:
+                embed.add_field(
+                    name=f"📋 Sessions à planifier ({len(pending)})",
+                    value=f"Vous avez **{len(pending)}** séance(s) de pack en attente de planification.\nContactez votre coach pour les programmer.",
+                    inline=False
+                )
+
+            embed.add_field(
+                name="📊 Historique",
+                value=f"✅ Complétées: **{len(completed)}** | ❌ Annulées: **{len([b for b in all_bookings if b.status == config.STATUS_CANCELLED])}**",
+                inline=False
+            )
+
+            embed.set_footer(text="Utilisez le bouton de réservation pour créer une nouvelle session")
+            embed.timestamp = datetime.utcnow()
+            await interaction.followup.send(embed=embed, ephemeral=True)
+
     @app_commands.command(name="add-sessions", description="[Coach] Ajouter des sessions manuellement pour un client")
     @app_commands.describe(
         user="Le client pour qui créer les sessions",

@@ -54,6 +54,13 @@ STATUS_CONFIRMED = "confirmed"
 STATUS_COMPLETED = "completed"
 STATUS_CANCELLED = "cancelled"
 STATUS_NO_SHOW = "no_show"
+STATUS_PENDING_SCHEDULE = "pending_schedule"
+
+# Pack Settings
+PACK_EXPIRY_DAYS = int(os.getenv('PACK_EXPIRY_DAYS', 60))  # Pack sessions expire after 60 days
+
+# Cancellation Policy
+CANCELLATION_NOTICE_HOURS = int(os.getenv('CANCELLATION_NOTICE_HOURS', 24))  # Minimum hours before cancellation/reschedule
 
 # Validation
 def validate_config():

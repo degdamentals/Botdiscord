@@ -36,6 +36,7 @@ COGS = [
     'cogs.feedback',
     'cogs.admin',
     'cogs.stats',
+    'cogs.analytics',
     # 'cogs.calendar_sync',
     # 'cogs.events',
 ]
