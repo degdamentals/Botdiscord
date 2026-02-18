@@ -540,6 +540,104 @@ class AddSessionsModal(discord.ui.Modal):
                 pass  # User has DMs disabled
 
 
+    @app_commands.command(name="clear-bookings", description="[Coach] Supprimer des réservations et leurs événements Google Calendar")
+    @app_commands.describe(
+        user="Utilisateur dont supprimer les réservations (optionnel — tous si non précisé)",
+        status="Statut des réservations à supprimer"
+    )
+    @app_commands.choices(status=[
+        app_commands.Choice(name="Toutes", value="all"),
+        app_commands.Choice(name="Confirmées seulement", value="confirmed"),
+        app_commands.Choice(name="Annulées seulement", value="cancelled"),
+        app_commands.Choice(name="À planifier (packs) seulement", value="pending_schedule"),
+    ])
+    async def clear_bookings(
+        self,
+        interaction: discord.Interaction,
+        user: Optional[discord.Member] = None,
+        status: str = "all"
+    ):
+        """
+        Delete bookings from DB and their Google Calendar events
+        """
+        if not is_coach(interaction.user) and not interaction.user.guild_permissions.administrator:
+            await interaction.response.send_message(
+                embed=create_error_embed("Vous devez être coach pour utiliser cette commande."),
+                ephemeral=True
+            )
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        with get_session() as session:
+            query = session.query(Booking)
+
+            # Filter by user if provided
+            if user:
+                client = session.query(Client).filter_by(discord_id=str(user.id)).first()
+                if not client:
+                    await interaction.followup.send(
+                        embed=create_error_embed(f"{user.mention} n'a aucune réservation en base."),
+                        ephemeral=True
+                    )
+                    return
+                query = query.filter(Booking.client_id == client.id)
+
+            # Filter by status
+            if status != "all":
+                query = query.filter(Booking.status == status)
+
+            bookings = query.all()
+
+            if not bookings:
+                await interaction.followup.send(
+                    embed=create_error_embed("Aucune réservation trouvée avec ces critères."),
+                    ephemeral=True
+                )
+                return
+
+            # Delete Google Calendar events
+            deleted_cal = 0
+            failed_cal = 0
+            for booking in bookings:
+                if booking.google_event_id:
+                    success = self.calendar_manager.delete_event(booking.google_event_id)
+                    if success:
+                        deleted_cal += 1
+                    else:
+                        failed_cal += 1
+
+            # Delete from DB
+            count = len(bookings)
+            for booking in bookings:
+                session.delete(booking)
+            session.commit()
+
+        # Build result embed
+        user_label = user.mention if user else "tous les utilisateurs"
+        status_label = {
+            "all": "toutes",
+            "confirmed": "confirmées",
+            "cancelled": "annulées",
+            "pending_schedule": "à planifier"
+        }.get(status, status)
+
+        embed = discord.Embed(
+            title="🗑️ Réservations supprimées",
+            color=config.SUCCESS_COLOR
+        )
+        embed.add_field(name="👤 Utilisateur", value=user_label, inline=True)
+        embed.add_field(name="📋 Statut", value=status_label, inline=True)
+        embed.add_field(name="🗑️ Supprimées (DB)", value=f"**{count}** réservation(s)", inline=False)
+        embed.add_field(
+            name="📅 Google Calendar",
+            value=f"✅ {deleted_cal} événement(s) supprimé(s)" + (f"\n⚠️ {failed_cal} échec(s)" if failed_cal else ""),
+            inline=False
+        )
+        embed.timestamp = datetime.utcnow()
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 async def setup(bot):
     """
     Setup function to add the cog to the bot
