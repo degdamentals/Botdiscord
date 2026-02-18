@@ -161,10 +161,11 @@ class Tickets(commands.Cog):
                     ephemeral=True
                 )
 
-    async def _close_ticket(self, interaction: discord.Interaction):
+    async def _close_ticket(self, interaction: discord.Interaction, channel: discord.TextChannel = None):
         """
         Close a ticket channel
         """
+        target_channel = channel or interaction.channel
         embed = create_info_embed(
             "🔒 Fermeture du ticket dans 5 secondes...\n"
             "Le salon sera supprimé."
@@ -175,7 +176,7 @@ class Tickets(commands.Cog):
         await discord.utils.sleep_until(discord.utils.utcnow() + timedelta(seconds=5))
 
         try:
-            await interaction.channel.delete(reason=f"Ticket fermé par {interaction.user}")
+            await target_channel.delete(reason=f"Ticket fermé par {interaction.user}")
         except discord.Forbidden:
             await interaction.followup.send(
                 embed=create_error_embed("Je n'ai pas la permission de supprimer ce salon."),
@@ -686,19 +687,20 @@ class Tickets(commands.Cog):
         booking_ids = []
         created_slots = []
 
-        for i in range(quantity):
-            # Calculate slot time (if multiple, they'll need to select each one)
-            # For now, we'll only create the first one and notify about the rest
-            if i == 0:
-                current_slot = selected_slot
-            else:
-                # For additional sessions, we'll create placeholders to be scheduled later
-                # This will be handled in a future update
-                break
+        with get_session() as session:
+            # Get or create client
+            client = session.query(Client).filter_by(discord_id=str(user.id)).first()
+            if not client:
+                client = Client(
+                    discord_id=str(user.id),
+                    discord_name=user.display_name
+                )
+                session.add(client)
+                session.flush()
 
-            # Create event in Google Calendar
+            # Create the first booking (with selected slot)
             event_id = self.calendar_manager.create_booking_event(
-                start_time=current_slot,
+                start_time=selected_slot,
                 duration_minutes=duration,
                 booking_type=booking_type,
                 client_name=user.display_name,
@@ -713,37 +715,38 @@ class Tickets(commands.Cog):
                 )
                 return
 
-            # Save to database
-            with get_session() as session:
-                # Get or create client
-                client = session.query(Client).filter_by(discord_id=str(user.id)).first()
-                if not client:
-                    client = Client(
-                        discord_id=str(user.id),
-                        discord_name=user.display_name
-                    )
-                    session.add(client)
-                    session.flush()
+            booking = Booking(
+                client_id=client.id,
+                google_event_id=event_id,
+                booking_type=booking_type,
+                scheduled_at=selected_slot,
+                duration_minutes=duration,
+                status=config.STATUS_CONFIRMED,
+                ticket_channel_id=str(ticket_channel_id),
+                notes=f"Pack de {quantity} séances - Séance 1/{quantity}" if quantity > 1 else None
+            )
+            session.add(booking)
+            session.flush()
+            client.total_sessions += 1
+            booking_ids.append(booking.id)
+            created_slots.append(selected_slot)
 
-                # Create booking
-                booking = Booking(
+            # For packs: create placeholder bookings for remaining sessions
+            for i in range(1, quantity):
+                placeholder = Booking(
                     client_id=client.id,
-                    google_event_id=event_id,
+                    google_event_id=None,
                     booking_type=booking_type,
-                    scheduled_at=current_slot,
+                    scheduled_at=selected_slot,  # Placeholder date, to be updated by coach
                     duration_minutes=duration,
-                    status=config.STATUS_CONFIRMED,
+                    status="pending_schedule",
                     ticket_channel_id=str(ticket_channel_id),
-                    notes=f"Pack de {quantity} séances - Séance 1/{quantity}" if quantity > 1 else None
+                    notes=f"Pack de {quantity} séances - Séance {i+1}/{quantity} (à planifier)"
                 )
-                session.add(booking)
+                session.add(placeholder)
                 session.flush()
-
-                # Update client total sessions
-                client.total_sessions += 1
-
-                booking_ids.append(booking.id)
-                created_slots.append(current_slot)
+                booking_ids.append(placeholder.id)
+                created_slots.append(selected_slot)
 
         # Send confirmation
         if quantity == 1:

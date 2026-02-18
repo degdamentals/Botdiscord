@@ -17,12 +17,14 @@ class Reminders(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.check_reminders.start()
+        self.daily_coach_summary.start()
 
     def cog_unload(self):
         """
         Stop the reminder task when cog is unloaded
         """
         self.check_reminders.cancel()
+        self.daily_coach_summary.cancel()
 
     async def cog_load(self):
         """
@@ -45,15 +47,27 @@ class Reminders(commands.Cog):
             ).all()
 
             for booking in bookings:
-                time_until = booking.scheduled_at.replace(tzinfo=config.TIMEZONE) - now
+                scheduled = booking.scheduled_at
+                # Ensure timezone-aware comparison
+                if scheduled.tzinfo is None:
+                    scheduled = config.TIMEZONE.localize(scheduled)
+                time_until = scheduled - now
 
-                # 24h reminder
-                if config.REMINDER_24H_ENABLED and timedelta(hours=23, minutes=45) <= time_until <= timedelta(hours=24, minutes=15):
+                # 24h reminder - only if not already sent
+                if (config.REMINDER_24H_ENABLED
+                        and not booking.reminder_24h_sent
+                        and timedelta(hours=23, minutes=45) <= time_until <= timedelta(hours=24, minutes=15)):
                     await self.send_24h_reminder(booking)
+                    booking.reminder_24h_sent = True
+                    session.commit()
 
-                # 1h reminder
-                if config.REMINDER_1H_ENABLED and timedelta(minutes=45) <= time_until <= timedelta(hours=1, minutes=15):
+                # 1h reminder - only if not already sent
+                if (config.REMINDER_1H_ENABLED
+                        and not booking.reminder_1h_sent
+                        and timedelta(minutes=45) <= time_until <= timedelta(hours=1, minutes=15)):
                     await self.send_1h_reminder(booking)
+                    booking.reminder_1h_sent = True
+                    session.commit()
 
     @check_reminders.before_loop
     async def before_check_reminders(self):

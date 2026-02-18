@@ -91,8 +91,24 @@ class GoogleCalendarManager:
                 is_available = True
 
                 for event in events:
-                    event_start = datetime.fromisoformat(event['start'].get('dateTime', event['start'].get('date')))
-                    event_end = datetime.fromisoformat(event['end'].get('dateTime', event['end'].get('date')))
+                    # Handle both dateTime (normal events) and date (all-day events)
+                    start_str = event['start'].get('dateTime') or event['start'].get('date', '')
+                    end_str = event['end'].get('dateTime') or event['end'].get('date', '')
+
+                    # All-day events have format "YYYY-MM-DD" without time - mark full day as busy
+                    if 'T' not in start_str:
+                        # All-day event: block the entire day
+                        try:
+                            event_start = config.TIMEZONE.localize(datetime.fromisoformat(start_str).replace(hour=0, minute=0))
+                            event_end = config.TIMEZONE.localize(datetime.fromisoformat(end_str).replace(hour=23, minute=59))
+                        except (ValueError, AttributeError):
+                            continue
+                    else:
+                        try:
+                            event_start = datetime.fromisoformat(start_str)
+                            event_end = datetime.fromisoformat(end_str)
+                        except ValueError:
+                            continue
 
                     # Make timezone-aware if needed
                     if event_start.tzinfo is None:

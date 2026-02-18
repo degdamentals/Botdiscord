@@ -60,7 +60,7 @@ class Stats(commands.Cog):
 
             # Calculate statistics
             total_sessions = len(bookings)
-            completed = len([b for b in bookings if b.status == config.STATUS_CONFIRMED or b.status == config.STATUS_COMPLETED])
+            completed = len([b for b in bookings if b.status == config.STATUS_COMPLETED])
             cancelled = len([b for b in bookings if b.status == config.STATUS_CANCELLED])
             no_shows = len([b for b in bookings if b.status == config.STATUS_NO_SHOW])
             free_sessions = len([b for b in bookings if b.booking_type == config.BOOKING_TYPE_FREE])
@@ -238,6 +238,7 @@ class AddNoteModal(discord.ui.Modal):
                 created_by_discord_id=str(interaction.user.id)
             )
             session.add(new_note)
+            session.commit()
 
         embed = discord.Embed(
             title="✅ Note ajoutée",

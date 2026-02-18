@@ -38,19 +38,24 @@ class FeedbackCog(commands.Cog):
         now = datetime.now(config.TIMEZONE)
 
         with get_session() as session:
-            # Get sessions that ended in the last hour and don't have feedback yet
-            one_hour_ago = now - timedelta(hours=1)
+            # Get sessions that ended in the last 2 hours and don't have feedback yet
+            two_hours_ago = now - timedelta(hours=2)
 
             bookings = session.query(Booking).outerjoin(Feedback).filter(
                 Booking.status == config.STATUS_CONFIRMED,
                 Booking.scheduled_at < now,
-                Booking.scheduled_at > one_hour_ago,
+                Booking.scheduled_at > two_hours_ago,
                 Feedback.id == None  # No feedback exists
             ).all()
 
             for booking in bookings:
+                # Ensure timezone-aware comparison
+                scheduled = booking.scheduled_at
+                if scheduled.tzinfo is None:
+                    scheduled = config.TIMEZONE.localize(scheduled)
+
                 # Check if session is really completed (scheduled_at + duration has passed)
-                session_end = booking.scheduled_at + timedelta(minutes=booking.duration_minutes)
+                session_end = scheduled + timedelta(minutes=booking.duration_minutes)
                 if session_end <= now:
                     await self.send_feedback_request(booking)
                     # Mark booking as completed

@@ -43,6 +43,8 @@ class Booking(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_channel_id = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
+    reminder_24h_sent = Column(Boolean, default=False, nullable=False)
+    reminder_1h_sent = Column(Boolean, default=False, nullable=False)
 
     # Relationships
     client = relationship("Client", back_populates="bookings")
