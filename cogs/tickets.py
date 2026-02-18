@@ -418,6 +418,9 @@ class Tickets(commands.Cog):
             # Only coaches will see the buttons work (permissions check)
             await ticket_channel.send(embed=coach_embed, view=coach_view)
 
+            # Notify coaches about new ticket
+            await self.notify_coaches_new_ticket(user, ticket_channel)
+
             return ticket_channel
 
         except discord.Forbidden:
@@ -868,6 +871,40 @@ class Tickets(commands.Cog):
                 )
             except discord.Forbidden:
                 print(f"❌ No permission to send to log channel")
+
+        # DM each coach directly
+        for member in coach_role.members:
+            try:
+                await member.send(embed=embed)
+            except discord.Forbidden:
+                print(f"❌ Cannot send DM to coach {member.name}")
+
+    async def notify_coaches_new_ticket(self, user: discord.Member, ticket_channel: discord.TextChannel):
+        """
+        Send DM notification to coaches when a new ticket is opened
+
+        Args:
+            user: The user who opened the ticket
+            ticket_channel: The created ticket channel
+        """
+        coach_role = user.guild.get_role(config.COACH_ROLE_ID)
+        if not coach_role:
+            return
+
+        embed = discord.Embed(
+            title="🎫 Nouveau ticket ouvert",
+            description=f"**{user.display_name}** a ouvert un ticket de coaching.",
+            color=config.BOT_COLOR
+        )
+        embed.add_field(name="👤 Utilisateur", value=user.mention, inline=True)
+        embed.add_field(name="📩 Ticket", value=ticket_channel.mention, inline=True)
+        embed.timestamp = datetime.utcnow()
+
+        for member in coach_role.members:
+            try:
+                await member.send(embed=embed)
+            except discord.Forbidden:
+                print(f"❌ Cannot send DM to coach {member.name}")
 
     async def handle_cancel_booking(self, interaction: discord.Interaction, booking_id: int):
         """

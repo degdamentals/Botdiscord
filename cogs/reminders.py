@@ -4,6 +4,7 @@ Reminders Cog - Automatic reminders for coaching sessions
 import discord
 from discord.ext import commands, tasks
 from datetime import datetime, timedelta
+import datetime as dt
 import config
 from database import get_session, Booking, Client
 from utils.embeds import create_info_embed
@@ -178,21 +179,22 @@ class Reminders(commands.Cog):
             except discord.Forbidden:
                 print(f"❌ Cannot send DM to {client.discord_name}")
 
-    @tasks.loop(hours=24)  # Every day at the same time
+    @tasks.loop(time=dt.time(hour=20, minute=0, tzinfo=config.TIMEZONE))
     async def daily_coach_summary(self):
         """
-        Send daily summary to coaches
+        Send daily summary to coaches at 20:00 with tomorrow's sessions
         """
         now = datetime.now(config.TIMEZONE)
-        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        tomorrow_start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        tomorrow_end = (now + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999999)
+        tomorrow_label = tomorrow_start.strftime("%d/%m/%Y")
 
-        # Get today's bookings
+        # Get tomorrow's bookings
         with get_session() as session:
             bookings = session.query(Booking).filter(
                 Booking.status == config.STATUS_CONFIRMED,
-                Booking.scheduled_at >= today_start,
-                Booking.scheduled_at <= today_end
+                Booking.scheduled_at >= tomorrow_start,
+                Booking.scheduled_at <= tomorrow_end
             ).order_by(Booking.scheduled_at).all()
 
             if not bookings:
@@ -200,8 +202,8 @@ class Reminders(commands.Cog):
 
             # Create summary embed
             embed = discord.Embed(
-                title="📅 Planning du jour",
-                description=f"Vous avez **{len(bookings)}** session(s) prévue(s) aujourd'hui",
+                title=f"📅 Planning de demain — {tomorrow_label}",
+                description=f"Vous avez **{len(bookings)}** session(s) prévue(s) demain",
                 color=config.BOT_COLOR
             )
 
@@ -215,7 +217,7 @@ class Reminders(commands.Cog):
                         inline=False
                     )
 
-            embed.set_footer(text="Bonne journée de coaching! 🎮")
+            embed.set_footer(text="Bonne séance de coaching demain! 🎮")
             embed.timestamp = datetime.utcnow()
 
             # Send to coaches (find them by role)
