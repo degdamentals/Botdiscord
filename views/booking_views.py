@@ -361,9 +361,9 @@ class CalendarSlotsView(View):
     @discord.ui.button(
         label="❌ Annuler",
         style=discord.ButtonStyle.danger,
-        custom_id="cancel_booking"
+        custom_id="slots_cancel_booking"
     )
-    async def cancel_button(self, button: Button, interaction: discord.Interaction):
+    async def cancel_button(self, interaction: discord.Interaction, button: Button):
         embed = create_error_embed("Réservation annulée.")
         await interaction.response.edit_message(embed=embed, view=None)
         self.stop()
@@ -398,16 +398,16 @@ class ConfirmBookingView(View):
         style=discord.ButtonStyle.success,
         custom_id="confirm_booking"
     )
-    async def confirm_button(self, button: Button, interaction: discord.Interaction):
+    async def confirm_button(self, interaction: discord.Interaction, button: Button):
         await self.confirm_callback(interaction, self.booking_details)
         self.stop()
 
     @discord.ui.button(
         label="❌ Annuler",
         style=discord.ButtonStyle.danger,
-        custom_id="cancel_booking"
+        custom_id="confirm_cancel_booking"
     )
-    async def cancel_button(self, button: Button, interaction: discord.Interaction):
+    async def cancel_button(self, interaction: discord.Interaction, button: Button):
         if self.cancel_callback:
             await self.cancel_callback(interaction)
         else:
